@@ -1,0 +1,113 @@
+---
+output: html_document
+---
+
+The following examples illustrates an LAI computation using data from a Licor
+LAI-2200 instrument. The assumed observation protocol is a two wand setup where
+the first wand is programmed for automatic measurements and installed outside 
+the canopy and the second wand is used to measure the below canopy values.
+
+### Workflow
+In order to combine above and below canopy measurements from different files (i.e. one file measures only above and the other only below canopy values), the FV2200 software from Licor can be used. However, each pair of files has to be merged by hand and only one LAI value is computed based on all records stored in the below canopy file. In order to operationalize this workflow, a short R script can be used.
+
+The workflow is basically the same as for the FV2200 software:
+
+1. Merge above and below canopy records from two different files based on the smallest time difference between the automatic above and the manual below canopy records
+2. Compute an individual LAI for each pair of observations (i.e. above and below canopy record) and store the result in a table-like structure for further processing 
+
+In order to gain flexibility, functions are used for reoccurring tasks. The itteration over all files will be then realized using a short script which calls these functions for each pair of files.
+
+
+### Function for merging the above and below canopy files
+The merging function requires two data.frames, a and b, which contain the values of the above and below canopy measurement as recorded by the LAI-2200 instrument.
+
+The function loops over the below canopy file and looks for the temporally closest record in the above canopy file. In the below canopy file, only those entries are used which do not start with an "L". We use "not L" instead of "B" since it might be the case that the users accidentally switched from below to above (i.e. to an "A" instead of a "B" in the first column of the measurement rows). This is why the first column of the below canopy dataset (b) is set to "B" in any case before returning the data.
+
+The function returns a data.frame with pairs of above and below measurements.
+```{r}
+merge_ab <- function(a, b){
+  ab <- lapply(seq(nrow(b)), function(x){
+    if(b$V1[x] != "L"){
+      minpos <- which.min(abs(a$V3 - b$V3[x]))
+      b$V1[x] <- "B"
+      return(rbind(a[minpos, ], b[x, 1:9]))
+    } else {
+      NULL
+    }
+  })
+  return(do.call("rbind", ab))
+}
+```
+
+
+### Function for computing the LAI
+The LAI computation follows the documentation from Licor in the [LAI-2200 manual](http://www.ecotek.com.cn/download/Manual-LAI-2200-EN.pdf). 
+
+Basically, the sun zenith and weighting factors are defined (assuming that the measurement has been performed over all zenith angles) and then the LAI is computed for each pair of above and below canopy observations.
+
+The function returns a data.frame with the original below ground measurements and an additional column which stores the respective LAI values.
+```{r}
+comp_lai <- function(ab){
+  szen <- c(7.0, 23.0, 38.0, 53.0, 68.0)
+  wf <- c(0.041, 0.131, 0.201, 0.290, 0.337)
+  lai <- lapply(seq(1, nrow(ab), 2), function(x){
+    act_lai <- -2.0 * sum(log(ab[x+1, 5:9]/ab[x, 5:9]) * cos(szen*pi/180) * wf)
+    data.frame(ab[c(x+1), ], LAI = act_lai)
+  })
+  lai <- do.call("rbind", lai)
+}
+```
+
+
+### Script for merging the data and computing the LAI
+Once the functions have been defined, applying them over all files is quite straight forward.
+For the following example we assume that all below canopy files are stored in a folder called "data_below" and that the corresponding above canopy measurements are all in one file called "ABV15116.TXT"
+
+First, the above canopy file is read. The reading starts in the first line below the text string "### Observations" which separates the header of the file from the actual measurements. In order to merge the file by the date/time information which is stored in the third column (with column name "V3"), the textual information is converted into a POSIX time format.
+
+Second, all names of the files with below canopy records are stored in a variable "file" which is then used to control an lapply-loop. Within this loop, each below canopy file is read and the date/time information is converted to POSIX-format analogously to what has been done with the above canopy file. Afterwards, the function ``merge_ab()`` and the function ``comp_lai()`` - both defined above - are called and the result from the latter function is stored in a list (this is handled by the ``lapply()`` function). 
+
+The individual below canopy files are now part of a list (variable ``lai_files``) and the individual files can be accessed by ``lai_files$<filename>``.
+
+```{r}
+wd <- "D:/active/moc/pt/examples/data/licor/"
+
+a <- read.table(paste0(wd, "data_above/ABV15116.TXT"), header = FALSE, 
+                       sep = "\t", dec = ".", 
+                       skip = grep(
+                         "### Observations",
+                         readLines(paste0(wd, "data_above/ABV15116.TXT"))),
+                       fill = TRUE)
+a$V3 <- as.POSIXct(a$V3, format = "%Y%m%d %H:%M:%S")
+```
+
+
+Second, all names of the files with below canopy records are stored in a variable "file" which is then used to control an lapply-loop. Within this loop, each below canopy file is read and the date/time information is converted to POSIX-format analogously to what has been done with the above canopy file. Afterwards, the function ``merge_ab()`` and the function ``comp_lai()`` - both defined above - are called and the result from the latter function is stored in a list (this is handled by the ``lapply()`` function). 
+
+```{r}
+files <- list.files(paste0(wd, "data_below/"), full.names = TRUE)
+
+lai_files <- lapply(files, function(x){
+  b <- read.table(x, header = FALSE, sep = "\t", dec = ".", 
+                  skip = grep("### Observations",readLines(x)),
+                  fill = TRUE)
+  b$V3 <- as.POSIXct(b$V3, format = "%Y%m%d %H:%M:%S")
+  ab <- merge_ab(a, b)
+  lai <- comp_lai(ab)
+  return(lai)
+})
+names(lai_files) <- basename(files)
+```
+
+
+The individual below canopy files are now part of a list (variable ``lai_files``) and the individual files can be accessed by ``lai_files$"<filename>"``.
+```{r}
+head(lai_files$"002B00.TXT")
+```
+
+All problems solved and time for analysis or visualizations, e.g. like this:
+```{r}
+boxplot(lai_files$"002B00.TXT"$LAI, 
+        main = "Range of LAI values from file 002B00.TXT")
+```
+

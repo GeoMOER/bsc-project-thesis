@@ -1,0 +1,39 @@
+---
+output: html_document
+---
+
+The following examples illustrates the reading of the meassured tree locations.
+
+### Workflow
+The workflow is straight forward. Read the file and adjust the content.
+
+
+### Reading the data
+Reading this data format is straight forward.
+```{r}
+wd <- "D:/active/moc/pt/examples/data/einmessung/"
+
+df <- read.table(paste0(wd, "eingemessene Baume_Distanz_Winkel.csv"), 
+                 header = TRUE, sep = ";", dec = ".")
+head(df)
+```
+
+
+### Adjusting the content
+While the angle and distance is already stored in individual columns, the from/to tree information is in a single column which is not flexible. Hence, this information will be split into two and the column names will be adjusted.
+```{r}
+# Adjust column names
+colnames(df) <- c("Original", "Distance", "Angle")
+head(df)
+
+# Split first column into two new ones; keep the original single column version
+# just for cross-checking purposes.
+split_pos <- regexpr("->",  df$Original)
+df$From <- substr(as.character(df$Original), 1, split_pos-2)
+df$To <- substr(as.character(df$Original), split_pos+2, 
+                nchar(as.character(df$Original)))
+
+head(df)
+```
+
+

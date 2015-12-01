@@ -1,0 +1,73 @@
+---
+output: html_document
+---
+
+The following examples illustrates the reading of a field data file.
+
+### Workflow
+The workflow is straight forward - one just has to read the file although this can be tricky if the sheet has not been designed for machine reading in the first place.
+
+
+### Reading the data
+Unfortunately, the data sections of the two files used in this example do not start in the same line. Therefore, the keyword "Umfang" is used to determine the heading line which is where the reading will start.
+
+```{r}
+wd <- "D:/active/moc/pt/examples/data/felddaten/"
+
+header_line <- grep("Umfang",readLines(paste0(wd, "Felddaten_Kaefer.csv")))
+
+fd_kaefer <- read.table(paste0(wd, "Felddaten_Kaefer.csv"), header = TRUE, 
+                 sep = ";", dec = ".", skip = header_line - 1)
+
+head(fd_kaefer)
+```
+
+The same for the second file.
+```{r}
+header_line <- grep("Umfang",readLines(paste0(wd, "Felddaten_Glaeser.csv")))
+
+fd_glaeser <- read.table(paste0(wd, "Felddaten_Glaeser.csv"), header = TRUE, 
+                         sep = ";", dec = ".", skip = header_line - 1)
+
+head(fd_glaeser)
+```
+
+
+### Combining the data
+Here comes the headache. The column headings do not match -neither in their naming nor in their number.
+
+To take care of this, we do the following:
+
+1. Define common column names where possible. 
+2. Create column PlotID and Tree in fd_kaefer.
+3. Adjust column PlotID, create column TreeID and delete column NONE in fd_glaeser.
+
+Once this is done, one can just combine the two data.frames by rows.
+
+```{r}
+str(fd_kaefer)
+str(fd_glaeser)
+
+colnames(fd_kaefer) <- c("TreeID", "TreeHeight", "TreeCirc", "Direction",
+                         "Distance", "BAIID", "LAIID", "Species", "Branch")
+
+colnames(fd_glaeser) <- c("PlotID", "Tree", "TreeHeight", "TreeCirc", "Direction",
+                          "Distance", "BAIID", "LAIID", "Species", "Branch", 
+                          "NONE")
+
+#Adjust fd_kaefer
+fd_kaefer$PlotID <- substr(fd_kaefer$TreeID, 1,3)
+fd_kaefer$Tree <- substr(fd_kaefer$TreeID, 4,6)
+
+# Adjust fd_glaeser
+fd_glaeser$PlotID <- sprintf("%03d", fd_glaeser$PlotID)
+fd_glaeser$TreeID <- paste0(fd_glaeser$ID, fd_glaeser$Tree)
+fd_glaeser$NONE <- NULL
+
+head(fd_kaefer)
+head(fd_glaeser)
+
+# Combine data frames
+fd <- rbind(fd_kaefer, fd_glaeser)
+head(fd)
+```

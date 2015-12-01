@@ -1,0 +1,97 @@
+---
+output: html_document
+---
+
+The following examples illustrates the reading of a penetrologger file and the
+visualization of a single profile of one measurement as well as the range of
+meassured values per depth across one plot.
+
+### Workflow
+
+The workflow is straight forward:
+
+1. The tabulated measurement values are imported into a data frame (the first lines with non-tabulated header information are skipped using "PENETRATION DATA" as the keyword which marks the beginning of the tabulated values).
+2. The table format is converted from "wide" to "long" format which is more flexible during the analysis.
+3. As an example, a visualization of a single measurement (sub-plot) and the range of registered pressure values across all sub-samples within one investigation plot are visualized as line and boxplot.
+
+
+### Reading the data and converting the table from "wide" to "long"
+After reading the data, one can see that it is in "wide" format, i.e. the measurements across the depth are in individual columns instead of in one column with a second column giving the depth of each row. This is not flexible for further analysis.
+
+```{r}
+wd <- "D:/active/moc/pt/examples/data/penetrologger/"
+
+pl <- read.table(paste0(wd, "pl.txt"), header = FALSE, 
+                 sep = "\t", dec = ".", 
+                 skip = grep(
+                   "PENETRATION DATA",
+                   readLines(paste0(wd, "pl.txt"))),
+                 fill = TRUE)
+colnames(pl) <- c("PlotID", "META1", "META2", sprintf("depth_%02d", seq(81)))
+head(pl)
+```
+
+To convert the data.frame from "wide" to "long" format, the ``reshape2::melt`` function is used (i.e. function ``melt()`` from the ``reshape2`` package). See ``?melt`` for more information on how to use the function. Basically, we just define which variables (i.e. columns) of the data frame are treated as indexes and which are treated as values. Prior to that, the ``reshape2`` package is loaded using ``library(reshape2)``.
+
+```{r}
+library(reshape2)
+pl_long <- melt(pl, id.vars = 1:3, measure.vars = 4:84)
+head(pl_long)
+
+pl_long$depth <- as.numeric(substr(as.character(pl_long$variable), 7, 8))
+pl_long$depth_factor <- factor(pl_long$depth, levels = rev(unique(pl_long$depth)))
+
+head(pl_long)
+```
+
+The next line just adds a column for the depth which is just extracted from the column names. Afterwards, an additional column is added which contains the same information but as a factor and with the factor levels sorted in inverse order (this is necessary so we can use this column for defining our y axis in the boxplot and that this y axis is inverted, i.e. starting from 0 at the upper end to larger values towards the lower end).
+
+```{r}
+pl_long$depth <- as.numeric(substr(as.character(pl_long$variable), 7, 8))
+pl_long$depth_factor <- factor(pl_long$depth, levels = rev(unique(pl_long$depth)))
+
+```
+
+### Three visualization examples
+
+The first example covers a simple line plot which shows the soil resistance as a function of depth for Plot 001.1.
+```{r}
+plot(depth ~ value, data = pl_long[pl_long$PlotID == "PLOT-001.1", ], 
+     main = "Logger resistance for plot 001.1",
+     xlab = "Resistance (MPascal)", ylab = "Depth",
+     type = "l", col = "red")
+```
+
+The second example shows how to add three sub-plot measurements into one plot and add some legend. The colors are defined first just for convenience. The limits of the x-axis (``xlim``) are defined in such a way that they cover the maximum value range in the entire dataset.
+```{r}
+colors <- c("#a6cee3", "#1f78b4", "#b2df8a")
+
+# Create plot with first line
+plot(depth ~ value, data = pl_long[pl_long$PlotID == "PLOT-001.1", ],
+     main = "Logger resistance for selected plots",
+     xlab = "Resistance (MPascal)", ylab = "Depth",
+     type = "l", col = colors[1], 
+     xlim = c(min(pl_long$value), max(pl_long$value)),
+     ylim = rev(range(pl_long[pl_long$PlotID == "PLOT-001.1", ]$depth)))
+
+# Add second line
+lines(depth ~ value, data = pl_long[pl_long$PlotID == "PLOT-001.2", ], 
+      col = colors[2])
+
+# Add third line
+lines(depth ~ value, data = pl_long[pl_long$PlotID == "PLOT-001.3", ], 
+      col = colors[3])
+
+# Add legend
+legend("topright", legend = c("Plot 001.1", "Plot 001.2", "Plot 001.3"), 
+       col = colors,  lwd = 1, bty = "n")
+```
+
+Finally, a box-plot showing the value distribution across all sub-plots for each depth level is computed.
+```{r}
+boxplot(pl_long$value ~ pl_long$depth_factor,
+        main = "Logger resistance across Plot 001",
+         xlab = "Resistance (MPascal)", ylab = "Depth",
+        horizontal = TRUE, las = 1, cex.axis=0.5)
+
+```

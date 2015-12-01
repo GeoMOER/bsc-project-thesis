@@ -1,0 +1,60 @@
+---
+output: html_document
+---
+
+The following examples illustrates the reading of a micro relief file.
+
+### Workflow
+The workflow is straight forward - one just has to read the file although this can be tricky if the sheet has not been designed for machine reading in the first place.
+
+
+### Reading the data
+In this example, the data set is quite difficult. Basically, we will read the plot id first, then the first and then a second data block.
+
+In the end, we get two data.frames with the content of the two data blocks and the plot id added to this content.
+```{r}
+wd <- "D:/active/moc/pt/examples/data/mikrorelief/"
+
+df <- read.table(paste0(wd, "Daten_Mikrorelief.csv"), header = FALSE, 
+                 sep = ";", dec = ".")
+
+# Plot ID
+plotid <- sprintf("%03d", as.numeric(as.character(df[df$V1 == "Plot_ID", 2]))) 
+
+
+# FIRST DATA BLOCK
+line <- grep("Hangparallel", df$V1)
+fdb <- df[(line+1):(line+7), 1:6]
+
+# Convert content to numeric values
+for(i in 2:6){
+  fdb[, i] <- as.numeric(as.character(fdb[, i]))
+}
+
+# Add column headings
+colnames(fdb) <- c(as.character(df[line, 1]), 
+                   paste0("D", as.character(unlist(df[line, 2:6]))))
+# Add plot id
+fdb$PlotID <- plotid
+
+head(fdb)
+
+
+# SECOND DATA BLOCK
+line <- grep("Hangabw", df$V1)
+sdb <- df[(line+1):(line+5), 1:7]
+
+# Convert content to numeric values
+for(i in 2:7){
+  sdb[, i] <- as.numeric(as.character(sdb[, i]))
+}
+
+# Add column headings
+colnames(sdb) <- c("Hangabwaerts", 
+                   paste0("D", as.character(unlist(df[line, 2:6]))))
+
+# Add plot id
+sdb$PlotID <- plotid
+
+head(sdb)
+```
