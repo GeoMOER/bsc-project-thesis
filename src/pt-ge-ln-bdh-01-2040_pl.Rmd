@@ -18,6 +18,8 @@ The workflow is straight forward:
 ### Reading the data and converting the table from "wide" to "long"
 After reading the data, one can see that it is in "wide" format, i.e. the measurements across the depth are in individual columns instead of in one column with a second column giving the depth of each row. This is not flexible for further analysis.
 
+Prior to changing the data to a "long" format, we will store the latitude and longitude information in two different columns and delete the original one.
+
 ```{r}
 wd <- "D:/active/moc/pt/examples/data/penetrologger/"
 
@@ -27,7 +29,22 @@ pl <- read.table(paste0(wd, "pl.txt"), header = FALSE,
                    "PENETRATION DATA",
                    readLines(paste0(wd, "pl.txt"))),
                  fill = TRUE)
-colnames(pl) <- c("PlotID", "META1", "META2", sprintf("depth_%02d", seq(81)))
+
+# Rename column headers
+colnames(pl) <- c("PlotID", "Coordinates", "SoilMoisture", 
+                  sprintf("depth_%02d", seq(0, 80)))
+
+# Store latitude in separate column and convert degree and minutes to decimal
+pl$Lat <- as.numeric(substr(pl$Coordinates, 2, 3)) + 
+  as.numeric(substr(pl$Coordinates, 4, 10)) / 60.0
+
+# Store longitude in separate column and convert degree and minutes to decimal
+pl$Lon <- as.numeric(substr(pl$Coordinates[1], 13, 15)) + 
+  as.numeric(substr(pl$Coordinates[1], 16, 22)) / 60.0
+
+# Delete original coordinates column
+pl$Coordinates <- NULL
+
 head(pl)
 ```
 
@@ -35,12 +52,7 @@ To convert the data.frame from "wide" to "long" format, the ``reshape2::melt`` f
 
 ```{r}
 library(reshape2)
-pl_long <- melt(pl, id.vars = 1:3, measure.vars = 4:84)
-head(pl_long)
-
-pl_long$depth <- as.numeric(substr(as.character(pl_long$variable), 7, 8))
-pl_long$depth_factor <- factor(pl_long$depth, levels = rev(unique(pl_long$depth)))
-
+pl_long <- melt(pl, id.vars = c(1:2, 84:85), measure.vars = 3:83)
 head(pl_long)
 ```
 
@@ -50,6 +62,7 @@ The next line just adds a column for the depth which is just extracted from the 
 pl_long$depth <- as.numeric(substr(as.character(pl_long$variable), 7, 8))
 pl_long$depth_factor <- factor(pl_long$depth, levels = rev(unique(pl_long$depth)))
 
+head(pl_long)
 ```
 
 ### Three visualization examples
@@ -58,7 +71,7 @@ The first example covers a simple line plot which shows the soil resistance as a
 ```{r}
 plot(depth ~ value, data = pl_long[pl_long$PlotID == "PLOT-001.1", ], 
      main = "Logger resistance for plot 001.1",
-     xlab = "Resistance (MPascal)", ylab = "Depth",
+     xlab = "Resistance (MPascal)", ylab = "Depth (cm)",
      type = "l", col = "red")
 ```
 
@@ -69,29 +82,47 @@ colors <- c("#a6cee3", "#1f78b4", "#b2df8a")
 # Create plot with first line
 plot(depth ~ value, data = pl_long[pl_long$PlotID == "PLOT-001.1", ],
      main = "Logger resistance for selected plots",
-     xlab = "Resistance (MPascal)", ylab = "Depth",
-     type = "l", col = colors[1], 
+     xlab = "Resistance (MPascal)", ylab = "Depth (cm)",
+     type = "l", col = colors[1], lwd = 2,
      xlim = c(min(pl_long$value), max(pl_long$value)),
      ylim = rev(range(pl_long[pl_long$PlotID == "PLOT-001.1", ]$depth)))
 
 # Add second line
 lines(depth ~ value, data = pl_long[pl_long$PlotID == "PLOT-001.2", ], 
-      col = colors[2])
+      col = colors[2], lwd = 2)
 
 # Add third line
 lines(depth ~ value, data = pl_long[pl_long$PlotID == "PLOT-001.3", ], 
-      col = colors[3])
+      col = colors[3], lwd = 2)
 
 # Add legend
 legend("topright", legend = c("Plot 001.1", "Plot 001.2", "Plot 001.3"), 
-       col = colors,  lwd = 1, bty = "n")
+       col = colors,  lwd = 2, bty = "n")
+```
+
+```{r, echo=FALSE, eval=FALSE}
+ggplot(data=pl_long, aes(x=depth, y=value, color =  PlotID)) + 
+  geom_line() + 
+  scale_x_continuous(name="Depth (cm)", trans = "reverse") + 
+  scale_y_continuous(name="Resistance (MPa)") + 
+  labs(title = "Individual logger resistances across Plot 001") + 
+  coord_flip()
 ```
 
 Finally, a box-plot showing the value distribution across all sub-plots for each depth level is computed.
 ```{r}
 boxplot(pl_long$value ~ pl_long$depth_factor,
         main = "Logger resistance across Plot 001",
-         xlab = "Resistance (MPascal)", ylab = "Depth",
+         xlab = "Resistance (MPascal)", ylab = "Depth (cm)",
         horizontal = TRUE, las = 1, cex.axis=0.5)
 
+```
+
+```{r, echo=FALSE, eval=FALSE}
+ggplot(data=pl_long, aes(x=depth, y=value, group = depth)) + 
+  geom_boxplot() + 
+  scale_x_continuous(name="Depth (cm)", trans = "reverse") + 
+  scale_y_continuous(name="Resistance (MPa)") + 
+  labs(title = "Logger resistance across Plot 001") + 
+  coord_flip()
 ```
