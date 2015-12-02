@@ -11,9 +11,9 @@ The workflow is straight forward. Read the file and adjust the content.
 ### Reading the data
 Reading this data format is straight forward.
 ```{r}
-wd <- "D:/active/moc/pt/examples/data/einmessung/"
+wd <- "D:/active/moc/pt/examples/data/topo_survey/"
 
-df <- read.table(paste0(wd, "eingemessene Baume_Distanz_Winkel.csv"), 
+df <- read.table(paste0(wd, "topo_survey.csv"), 
                  header = TRUE, sep = ";", dec = ".")
 head(df)
 ```

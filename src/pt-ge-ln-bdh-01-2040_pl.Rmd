@@ -21,7 +21,7 @@ After reading the data, one can see that it is in "wide" format, i.e. the measur
 Prior to changing the data to a "long" format, we will store the latitude and longitude information in two different columns and delete the original one.
 
 ```{r}
-wd <- "D:/active/moc/pt/examples/data/penetrologger/"
+wd <- "D:/active/moc/pt/examples/data/pl/"
 
 pl <- read.table(paste0(wd, "pl.txt"), header = FALSE, 
                  sep = "\t", dec = ".", 

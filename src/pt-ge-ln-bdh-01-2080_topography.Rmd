@@ -15,7 +15,7 @@ In the end, we get two data.frames with the content of the two data blocks and t
 ```{r}
 wd <- "D:/active/moc/pt/examples/data/mikrorelief/"
 
-df <- read.table(paste0(wd, "Daten_Mikrorelief.csv"), header = FALSE, 
+df <- read.table(paste0(wd, "mikrorelief.csv"), header = FALSE, 
                  sep = ";", dec = ".")
 
 # Plot ID

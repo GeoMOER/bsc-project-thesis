@@ -69,14 +69,14 @@ img {
 <div id="reading-the-data" class="section level3">
 <h3>Reading the data</h3>
 <p>Unfortunately, the data sections of the two files used in this example do not start in the same line. Therefore, the keyword “Umfang” is used to determine the heading line which is where the reading will start.</p>
-<pre class="r"><code>wd &lt;- &quot;D:/active/moc/pt/examples/data/felddaten/&quot;
+<pre class="r"><code>wd &lt;- &quot;D:/active/moc/pt/examples/data/trees/&quot;
 
-header_line &lt;- grep(&quot;Umfang&quot;,readLines(paste0(wd, &quot;Felddaten_Kaefer.csv&quot;)))
+header_line &lt;- grep(&quot;Umfang&quot;,readLines(paste0(wd, &quot;trees_01.csv&quot;)))
 
-fd_kaefer &lt;- read.table(paste0(wd, &quot;Felddaten_Kaefer.csv&quot;), header = TRUE, 
+fd_01 &lt;- read.table(paste0(wd, &quot;trees_01.csv&quot;), header = TRUE, 
                  sep = &quot;;&quot;, dec = &quot;.&quot;, skip = header_line - 1)
 
-head(fd_kaefer)</code></pre>
+head(fd_01)</code></pre>
 <pre><code>##   ID.Baum H.he..m. Umfang..m. Richtung..ø. Abstand..m. BAI..Mess_ID.
 ## 1  050B00       NA       1.95           NA          NA            NA
 ## 2  050B01       NA       0.80           51           8            NA
@@ -92,12 +92,12 @@ head(fd_kaefer)</code></pre>
 ## 5            NA      RB                     NA
 ## 6            NA     RB                      NA</code></pre>
 <p>The same for the second file.</p>
-<pre class="r"><code>header_line &lt;- grep(&quot;Umfang&quot;,readLines(paste0(wd, &quot;Felddaten_Glaeser.csv&quot;)))
+<pre class="r"><code>header_line &lt;- grep(&quot;Umfang&quot;,readLines(paste0(wd, &quot;trees_02.csv&quot;)))
 
-fd_glaeser &lt;- read.table(paste0(wd, &quot;Felddaten_Glaeser.csv&quot;), header = TRUE, 
+fd_02 &lt;- read.table(paste0(wd, &quot;trees_02.csv&quot;), header = TRUE, 
                          sep = &quot;;&quot;, dec = &quot;.&quot;, skip = header_line - 1)
 
-head(fd_glaeser)</code></pre>
+head(fd_02)</code></pre>
 <pre><code>##   Projekt.NR ID.Baum H.he..m. Umfang..m. Richtung..ø. Abstand..m.
 ## 1         45     B00       NA       1.12           NA          NA
 ## 2         45     B01       NA       0.59           36           3
@@ -119,11 +119,11 @@ head(fd_glaeser)</code></pre>
 <p>To take care of this, we do the following:</p>
 <ol style="list-style-type: decimal">
 <li>Define common column names where possible.</li>
-<li>Create column PlotID and Tree in fd_kaefer.</li>
-<li>Adjust column PlotID, create column TreeID and delete column NONE in fd_glaeser.</li>
+<li>Create column PlotID and Tree in fd_01.</li>
+<li>Adjust column PlotID, create column TreeID and delete column NONE in fd_02.</li>
 </ol>
 <p>Once this is done, one can just combine the two data.frames by rows.</p>
-<pre class="r"><code>str(fd_kaefer)</code></pre>
+<pre class="r"><code>str(fd_01)</code></pre>
 <pre><code>## 'data.frame':    8 obs. of  9 variables:
 ##  $ ID.Baum               : Factor w/ 8 levels &quot;&quot;,&quot;050B00&quot;,&quot;050B01&quot;,..: 2 3 4 5 6 7 8 1
 ##  $ H.he..m.              : logi  NA NA NA NA NA NA ...
@@ -134,7 +134,7 @@ head(fd_glaeser)</code></pre>
 ##  $ LAI..Mess_ID.         : logi  NA NA NA NA NA NA ...
 ##  $ Baumart               : Factor w/ 4 levels &quot;&quot;,&quot;E&quot;,&quot;RB&quot;,&quot;RB &quot;: 3 3 3 3 3 4 2 1
 ##  $ X1..Astverzweigung..m.: logi  NA NA NA NA NA NA ...</code></pre>
-<pre class="r"><code>str(fd_glaeser)</code></pre>
+<pre class="r"><code>str(fd_02)</code></pre>
 <pre><code>## 'data.frame':    17 obs. of  11 variables:
 ##  $ Projekt.NR            : int  45 45 45 45 45 45 45 45 45 NA ...
 ##  $ ID.Baum               : Factor w/ 10 levels &quot;&quot;,&quot;B00&quot;,&quot;B01&quot;,..: 2 3 4 5 6 7 8 9 10 1 ...
@@ -147,23 +147,23 @@ head(fd_glaeser)</code></pre>
 ##  $ Baumart               : Factor w/ 3 levels &quot;&quot;,&quot;E&quot;,&quot;RB&quot;: 2 3 2 2 3 3 2 1 1 1 ...
 ##  $ X1..Astverzweigung..m.: logi  NA NA NA NA NA NA ...
 ##  $ X                     : logi  NA NA NA NA NA NA ...</code></pre>
-<pre class="r"><code>colnames(fd_kaefer) &lt;- c(&quot;TreeID&quot;, &quot;TreeHeight&quot;, &quot;TreeCirc&quot;, &quot;Direction&quot;,
+<pre class="r"><code>colnames(fd_01) &lt;- c(&quot;TreeID&quot;, &quot;TreeHeight&quot;, &quot;TreeCirc&quot;, &quot;Direction&quot;,
                          &quot;Distance&quot;, &quot;BAIID&quot;, &quot;LAIID&quot;, &quot;Species&quot;, &quot;Branch&quot;)
 
-colnames(fd_glaeser) &lt;- c(&quot;PlotID&quot;, &quot;Tree&quot;, &quot;TreeHeight&quot;, &quot;TreeCirc&quot;, &quot;Direction&quot;,
+colnames(fd_02) &lt;- c(&quot;PlotID&quot;, &quot;Tree&quot;, &quot;TreeHeight&quot;, &quot;TreeCirc&quot;, &quot;Direction&quot;,
                           &quot;Distance&quot;, &quot;BAIID&quot;, &quot;LAIID&quot;, &quot;Species&quot;, &quot;Branch&quot;, 
                           &quot;NONE&quot;)
 
-#Adjust fd_kaefer
-fd_kaefer$PlotID &lt;- substr(fd_kaefer$TreeID, 1,3)
-fd_kaefer$Tree &lt;- substr(fd_kaefer$TreeID, 4,6)
+#Adjust fd_01
+fd_01$PlotID &lt;- substr(fd_01$TreeID, 1,3)
+fd_01$Tree &lt;- substr(fd_01$TreeID, 4,6)
 
-# Adjust fd_glaeser
-fd_glaeser$PlotID &lt;- sprintf(&quot;%03d&quot;, fd_glaeser$PlotID)
-fd_glaeser$TreeID &lt;- paste0(fd_glaeser$ID, fd_glaeser$Tree)
-fd_glaeser$NONE &lt;- NULL
+# Adjust fd_02
+fd_02$PlotID &lt;- sprintf(&quot;%03d&quot;, fd_02$PlotID)
+fd_02$TreeID &lt;- paste0(fd_02$ID, fd_02$Tree)
+fd_02$NONE &lt;- NULL
 
-head(fd_kaefer)</code></pre>
+head(fd_01)</code></pre>
 <pre><code>##   TreeID TreeHeight TreeCirc Direction Distance BAIID LAIID Species Branch
 ## 1 050B00         NA     1.95        NA       NA    NA    NA      RB     NA
 ## 2 050B01         NA     0.80        51        8    NA    NA      RB     NA
@@ -178,7 +178,7 @@ head(fd_kaefer)</code></pre>
 ## 4    050  B03
 ## 5    050  B04
 ## 6    050  B05</code></pre>
-<pre class="r"><code>head(fd_glaeser)</code></pre>
+<pre class="r"><code>head(fd_02)</code></pre>
 <pre><code>##   PlotID Tree TreeHeight TreeCirc Direction Distance BAIID LAIID Species
 ## 1    045  B00         NA     1.12        NA       NA    NA    15       E
 ## 2    045  B01         NA     0.59        36        3    NA    28      RB
@@ -194,7 +194,7 @@ head(fd_kaefer)</code></pre>
 ## 5     NA    B04
 ## 6     NA    B05</code></pre>
 <pre class="r"><code># Combine data frames
-fd &lt;- rbind(fd_kaefer, fd_glaeser)
+fd &lt;- rbind(fd_01, fd_02)
 head(fd)</code></pre>
 <pre><code>##   TreeID TreeHeight TreeCirc Direction Distance BAIID LAIID Species Branch
 ## 1 050B00         NA     1.95        NA       NA    NA    NA      RB     NA
