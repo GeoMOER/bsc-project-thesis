@@ -1,0 +1,163 @@
+---
+output: html_document
+---
+
+The following examples illustrates the reading of DWD RADOLAN files and the 
+extraction of measurement time series at specific points defined by a point 
+vector dataset. For simplicity, we start with reading flat binary RST files.
+An example on how to read the original binary data is shown at the end.
+
+### Workflow
+
+The workflow is straight forward:
+1. Read radolan file (and convert it to ``raster`` if it is not already in a GIS format)
+2. Georeference the RADOLAN data set
+3. Extract points (or compute any other GIS operation)
+
+### Some usefull libraries
+```{r, message=FALSE, warning = FALSE}
+library(ggplot2)
+library(bit)
+library(mapview)
+library(raster)
+library(rgdal)
+library(reshape2)
+library(sp)
+```
+
+### Reading RADOLAN data which is already in a GIS format
+Reading RADOLAN which has already been converted to e.g. a flat binary RST format is straight forward when using the ``raster::raster`` function (i.e. the function ``raster`` of the ``raster`` package.
+
+The following example lists all flat binary RST files in a directory and combines them into a raster stack.
+```{r, eval=FALSE}
+path <- ("F:/radolan/")
+files <- list.files(paste0(path, "radolan/2010"), pattern = glob2rx("*.rst"), 
+                    full.names = TRUE, recursive = TRUE)
+radolan <- stack(files)
+```
+
+### Georeferencing RADOLAN
+If the raster stack has no (or the wrong) projection and extent information, the following proj4 string and dimensions can be used for 900 by 900 pixel datasets (e.g. RADOLAN RW or SF product).
+```{r, eval=FALSE}
+radolan_proj <- 
+  CRS("+proj=stere +lat_0=90 +lat_ts=90 +lon_0=10 +k=0.93301270189 +x_0=0 +y_0=0 +a=6370040 +b=6370040 +to_meter=1000 +no_defs")
+
+extent(radolan) <- extent(-523.4622, 376.5378, -4658.645, -3758.645)
+projection(radolan) <- radolan_proj
+```
+
+
+### Extracting RADOLAN data at selected locations
+Extracting RADOLAN data using e.g. a point vector shape file is not different from doing this with any other ``raster`` dataset. Just use the ``raster::extract`` function. 
+
+The following example reads a shape dataset with four points, transforms the created spatial points data frame to the same projection as the RADOLAN dataset and extracts the RADOLAN information at these points for every data layer in the RADOLAN stack. The date/time information is extracted from the raster layer names, which are stored as row names in the finally created data frame.
+```{r, message=FALSE, eval=FALSE}
+lahnberge <- readOGR("vector/lahnberge.shp", "lahnberge")
+lahnberge <- spTransform(lahnberge, radolan_proj)
+
+rdl_lb <- extract(radolan, lahnberge)
+
+rdl_lb <- data.frame(t(rdl_lb))
+colnames(rdl_lb) <- c("East", "West", "North", "South")
+rdl_lb$DATETIME <- substr(rownames(rdl_lb), 2, 12)
+rownames(rdl_lb) <- NULL
+```
+
+Since the data frame is now in a quite wide format, the ``reshape2::melt`` function is used to convert it to long format.
+```{r, message=FALSE, eval=FALSE}
+rdl_lb_long <- melt(rdl_lb, id = "DATETIME")
+colnames(rdl_lb_long) <- c("DATETIME", "LOCATION", "P")
+rdl_lb_long$P <- rdl_lb_long$P * 0.1
+```
+
+```{r, message=FALSE, eval=TRUE, echo=FALSE}
+# Save data so you can time efficiently load it if you need it again.
+# save(rdl_lb, rdl_lb_long, file = paste0(path, "rdl_lb.Rdata"))
+path <- ("F:/radolan/")
+load(paste0(path, "test/rdl_lb.Rdata"))
+```
+
+
+### Do some analysis
+With the above example, we have read the complete RADOLAN RW information for 2010 for the four locations, i.e. we have hourly values of rainfall amount at each of the four locations for every hour in 2010.
+
+Let's plot it.
+```{r, message=FALSE}
+ggplot(rdl_lb_long, aes(x = LOCATION, y = P, fill = LOCATION)) + geom_boxplot()
+```
+
+Subset the dataset to raining hours only (i.e. at least one of the four points
+must have a rainfall rate > 0).
+```{r, message=FALSE}
+p_datetime <- unique(rdl_lb_long$DATETIME[rdl_lb_long$P > 0])
+p_subset <- rdl_lb_long[rdl_lb_long$DATETIME %in% p_datetime, ]
+
+ggplot(p_subset, aes(x = LOCATION, y = P, fill = LOCATION)) + 
+  geom_boxplot(notch = TRUE) + 
+  scale_y_log10() + 
+  guides(fill=FALSE)
+```
+
+
+
+### Reading native RADOLAN format
+The following example illustrates the reading and conversion of the original RADOLAN format to a ``raster::raster`` object. Radolan data can be downloaded from the [DWD homepage](https://www.dwd.de/DE/leistungen/radolan/radolan_info/home_freie_radolan_kartendaten.html?lsbId=357710).
+
+A file format description can be found [here.](ftp://ftp-cdc.dwd.de/pub/CDC/grids_germany/hourly/radolan/RADOLAN-RADVOR-OP-Kompositformat_2.2.2.pdf)
+
+We assume that the RADOLAN file has already been unziped and start with reading the data:
+1. Scan the file for "\003" which is the last entry of the ASCII header and save the position.
+2. Open the RADOLAN file in a binary stream.
+3. Skip the first bytes depending on the position of the above scan.
+4. Read the rest of the file in raw format (i.e. byte by byte without any little/big endian swapping). The RW product has 900 by 900 pixels with 2 bytes per pixel.
+5. Convert the raw stream to bits.
+```{r, eval = TRUE, message = FALSE, warning = FALSE}
+binary_filepath <- paste0(path, "test/raa01-rw_10000-1001010050-dwd---bin")
+
+header_end <- regexpr("\003", readLines(binary_filepath, 1))
+                    
+rb_stream <- file(binary_filepath, "rb")
+
+skip_temp <- readBin(rb_stream, "raw", n = header_end, endian = "little")
+
+rb_data <- readBin(rb_stream, "raw", size = 1, n = 900*900*2, endian = "big")
+
+rb_data <- rawToBits(rb_data)
+```
+
+The data variable now looks like this (we show only the first 16 bits, i.e. the first pixel which is the one in the lower left corner:
+```{r, eval = TRUE, message = FALSE}
+rb_data[1:16]
+```
+
+Now we come to the conversion of the 12 bit value coding into an integer value. Since the format is little endian, the first bit is multiplied by 2 times 0, the second by 2 times 1 and so on which is - if you never heard of endian - counter intuitive for most (Windows) users. After converting the respective bits to integer, we unlist the return from the ``lapply`` loop.
+```{r, eval = TRUE, message = FALSE}
+rbi <- lapply(seq(0, 900*900-1, 1), function(x){
+  sum(as.integer(rb_data[(x*16+1):(x*16+12)]) * 2**seq(0, 11, 1))
+})
+rbi <- unlist(rbi)
+rbi[1:16]
+```
+As you can see, the first 16 pixels of the dataset have all the value of 2500 which is the default for missing values (i.e. values outside the radar range). We will exlude them later from the visualization to stretch the contrast.
+
+What's left is the conversion to a ``raster::raster`` object. Since the list starts with the lower left pixel, we have to transform the created matrix and additionally flip it along the y axis (i.e. horizontally). Aftewards we just set the extent and projection as we have already done it in the example above. That's it.
+```{r, eval = TRUE, message = FALSE}
+rb <- raster(t(matrix(rbi, ncol = 900, nrow = 900)))
+rb <- flip(rb, "y")
+
+radolan_proj <- 
+  CRS("+proj=stere +lat_0=90 +lat_ts=90 +lon_0=10 +k=0.93301270189 +x_0=0 +y_0=0 +a=6370040 +b=6370040 +to_meter=1000 +no_defs")
+extent(rb) <- extent(-523.4622, 376.5378, -4658.645, -3758.645)
+projection(rb) <- radolan_proj
+plot(rb, zlim = c(0,60))
+```
+
+
+```{r, eval = FALSE, echo = FALSE, message = FALSE}
+meike <- raster(paste0(path, "test/201001010050_raa01_rw.rst"))
+radolan_proj <- 
+  CRS("+proj=stere +lat_0=90 +lat_ts=90 +lon_0=10 +k=0.93301270189 +x_0=0 +y_0=0 +a=6370040 +b=6370040 +to_meter=1000 +no_defs")
+extent(meike) <- extent(-523.4622, 376.5378, -4658.645, -3758.645)
+projection(meike) <- radolan_proj
+mapview(rb, at = seq(-100,60,1)) + meike
+```

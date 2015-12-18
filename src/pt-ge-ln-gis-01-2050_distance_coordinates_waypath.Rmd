@@ -1,0 +1,105 @@
+---
+output: html_document
+---
+
+The following examples illustrates adds a variation to the [From Distance to Coordinates](http://moc.environmentalinformatics-marburg.de/doku.php?id=courses:bsc:project-thesis-geoei:lecture-notes:gis:pt-ge-ln-gis-01-2000) workflow by not using a fixed base point but meassuring from one point to the next one (i.e. as a path way).
+
+### Workflow
+The workflow is quite the same as in [From distance to coordinates](http://moc.environmentalinformatics-marburg.de/doku.php?id=courses:bsc:project-thesis-geoei:lecture-notes:gis:pt-ge-ln-gis-01-2000) and we use exactely the same helper functions. The exception is, that we use the just computed map coordinates as the base point for the next computation.
+
+In the following, we will not show file reading or the helper functions, again, but just show one example of a loop. The data frame used for this example is the one from [Reading tree observation sheets](http://moc.environmentalinformatics-marburg.de/doku.php?id=courses:bsc:project-thesis-geoei:lecture-notes:bdh:pt-ge-ln-bdh-01-2060_trees).
+
+```{r, echo = FALSE, warnings=FALSE}
+library(rgdal)
+library(raster)
+library(sp)
+
+wd <- "D:/active/moc/pt/examples/data/topo_survey/"
+df <- read.table(paste0(wd, "topo_survey.csv"), 
+                 header = TRUE, sep = ";", dec = ".")
+
+# Adjust column names
+colnames(df) <- c("Original", "Distance", "Angle")
+head(df)
+
+# Split first column into two new ones; keep the original single column version
+# just for cross-checking purposes.
+split_pos <- regexpr("->",  df$Original)
+df$From <- substr(as.character(df$Original), 1, split_pos-2)
+df$To <- substr(as.character(df$Original), split_pos+2, 
+                nchar(as.character(df$Original)))
+
+# Function to convert degrees to radians
+deg2Rad <- function(degrees) degrees * pi / 180
+
+# Function to convert direction and distance to x and y components in meter
+dirDis2XY <- function(dir, dis) {
+  u <- -dis * sin(deg2Rad(dir))
+  x <- round(-u, 2)
+  v <- -dis * cos(deg2Rad(dir))
+  y <- round(-v, 2)
+  return(as.data.frame(cbind(x, y)))
+}
+
+# Function to convert geographic coordinates to UTM-32N and transform the date
+# from WGS84 to GRS80
+latLong2UTM32 <- function(bpx, bpy){
+  p <- data.frame(x = bpx,
+                  y = bpy)
+  coordinates(p) <- ~x+y
+  projection(p) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+  p <- spTransform(p, CRS("+proj=utm +zone=32 +ellps=GRS80 +units=m +north"))
+  return(coordinates(p))  
+}
+
+# Function to calculate the UTM-32N coordinates for your point of interest
+# Arg
+# - bpx: Longitude of your GPS measured base point
+# - bpy: Latitude of your GPS measured base point
+# - dir: direction from your base point to your point of interest
+# - dis: distance from your base point to your point of interest
+calcNewPoint <- function(bpx, bpy, dir, dis){
+  offset <- dirDis2XY(dir, dis)
+  poi <- data.frame(x = bpx + offset$x,
+                  y = bpy + offset$y)
+  return(poi)
+}
+```
+
+### Computing map coordinates from a path way
+We use an arbitrary first base point in geographical coordinates for this example. This basepoint is converted to UTM 32 north (GRS80). 
+
+The map coordinates of this base point are stored in a data frame called mapp. Starting with line one in the path way dataset, which gives us the distance and angle to some point N from this initial base point, we compute the coordinates of N and save it in the second line of the mapp. The loop over our path way continoues and the next time, the position of N is used as basepoint and so on.
+```{r}
+x <- 8.913101 # base point x coordinate in geographical coordinates
+y <- 51.15143 # base point y coordinate in geographical coordinates
+
+# convert coordinates to UTM-32N
+coordinates_utm <- latLong2UTM32(x,y)
+x <- coordinates_utm[1]
+y <- coordinates_utm[2]
+
+mapp <- data.frame(PlotID = "TP",
+                   X = x,
+                   Y = y)
+for(i in seq(nrow(df))){
+  act_pos <- grep(df$From[i], mapp$PlotID)[1]
+  new_point <- calcNewPoint(mapp$X[act_pos], mapp$Y[act_pos], df$Angle[i], df$Distance[i])
+  newp <- data.frame(PlotID = df$To[i],
+                     X = new_point$x,
+                     Y = new_point$y)
+  mapp <- rbind(mapp, newp)  
+}
+head(mapp)
+```
+
+You can try the following on your PC to check the locations.
+```{r, eval = FALSE}
+# You can try this on your PC to check the locations.
+library(mapview)
+coordinates(mapp) <- ~X+Y
+projection(mapp) <- CRS("+proj=utm +zone=32 +ellps=GRS80 +units=m +north")
+mapview(mapp)
+```
+
+

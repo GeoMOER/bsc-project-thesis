@@ -1,0 +1,156 @@
+---
+output: html_document
+---
+
+The following examples illustrates the computation of a relative terrain elevation
+matrix  based on micro relief measurements along slope parallel and perpendicular lines.
+
+### Workflow
+The workflow is straight forward (althouhg maybe a little hard to understand):
+1. Compute the relative height changes in slope parallel direction relative to the left-most values of each line.
+2. Compute the relative height changes in slope downard direction relative to the upper-most values of each line.
+3. Correct the left-most values of the parallel lines by the left-most downward-slope height levels.
+
+
+### Reading the data
+We use the data from [Reading micro-topography sheets](http://moc.environmentalinformatics-marburg.de/doku.php?id=courses:bsc:project-thesis-geoei:lecture-notes:bdh:pt-ge-ln-bdh-01-2080_topography) and start directly with the two final data blocks that contain the slope parallel and slope downward measurement values. 
+```{r, echo=FALSE, warning=FALSE}
+wd <- "D:/active/moc/pt/examples/data/mikrorelief/"
+
+df <- read.table(paste0(wd, "mikrorelief.csv"), header = FALSE, 
+                 sep = ";", dec = ".")
+
+# Plot ID
+plotid <- sprintf("%03d", as.numeric(as.character(df[df$V1 == "Plot_ID", 2]))) 
+
+
+# FIRST DATA BLOCK
+line <- grep("Hangparallel", df$V1)
+fdb <- df[(line+1):(line+7), 1:6]
+
+# Convert content to numeric values
+for(i in 2:6){
+  fdb[, i] <- as.numeric(as.character(fdb[, i]))
+}
+
+# Add column headings
+colnames(fdb) <- c(as.character(df[line, 1]), 
+                   paste0("D", as.character(unlist(df[line, 2:6]))))
+# Add plot id
+fdb$PlotID <- plotid
+
+head(fdb)
+
+
+# SECOND DATA BLOCK
+line <- grep("Hangabw", df$V1)
+sdb <- df[(line+1):(line+5), 1:7]
+
+# Convert content to numeric values
+for(i in 2:7){
+  sdb[, i] <- as.numeric(as.character(sdb[, i]))
+}
+
+# Add column headings
+colnames(sdb) <- c("Hangabwaerts", 
+                   paste0("D", as.character(unlist(df[line, 2:6]))))
+
+# Add plot id
+sdb$PlotID <- plotid
+```
+
+```{r, echo=TRUE, warning=FALSE}
+head(fdb)
+head(sdb)
+```
+
+Before we start computing the actual relative terrain model, we homogenize the datasets and produce to long-format data frames, one for the slope parallel (sp) and one for the slope downward (sd) measurements.
+
+These values have been meassured along the lines of a rectangular grid of 5 by 5 meter with 1 m space between two adjacent slope parallel/downward lines. It looks something like that:
+    SD...
+    0 1 2 3 4 5
+SP0 |-|-|-|-|-|
+SP1 |-|-|-|-|-|
+SP2 |-|-|-|-|-|
+SP3 |-|-|-|-|-|
+SP4 |-|-|-|-|-|
+SP5 |-|-|-|-|-|
+
+```{r, echo=TRUE, warning=FALSE}
+library(reshape2)
+
+sp <- melt(fdb[1:6,], c("Hangparallel", "PlotID"))
+sp$Direction <- "SP"
+sp$Hangparallel <- paste0("SP", substr(sp$Hangparallel, 1, 1))
+sp$variable <- paste0("SD", substr(sp$variable, 4,4))
+colnames(sp) <- c("SPLoc", "PlotID", "SDLoc", "dH", "Direction")
+sp <- sp[,c("PlotID", "Direction", "SPLoc", "SDLoc", "dH")]
+head(sp)
+
+
+sd <- melt(sdb[,-7], c("Hangabwaerts", "PlotID"))
+sd$Direction <- "SD"
+sd$Hangabwaerts <- paste0("SP", substr(sd$Hangabwaerts, 3, 3))
+sd$variable <- paste0("SD", substr(sd$variable, 2,2))
+colnames(sd) <- c("SPLoc", "PlotID", "SDLoc", "dH", "Direction")
+sd <- sd[,c("PlotID", "Direction", "SPLoc", "SDLoc", "dH")]
+head(sd)
+```
+
+Once we have these long-data frames, we can start with the computation.
+
+First, we compute the vertical differences along each slope parallel. Afterwards we do the same for each slope downward line. The latter would be enough to do it only for the first one since we need only the leftmost downslope line to adjust the terrain values along the slope parallels relative to the upper left corner.
+```{r, echo=TRUE, warning=FALSE}
+# Loop over all slope parallels
+slope_parallels <- lapply(unique(sp$SPLoc), function(act_parallel){
+  # Loop over all vertical lines along a specific slope parallel
+  act_line <- lapply(seq(length(unique(sp$SDLoc))), function(x){
+    sum(sp$dH[sp$SPLoc == act_parallel][seq(x)])  
+  })
+  return(c(0, unlist(act_line)))
+})
+slope_parallels <- do.call("rbind", slope_parallels)
+
+
+
+# Loop over all slope verticals
+slope_verticals <- lapply(unique(sd$SDLoc), function(act_vertical){
+  # Loop over all parallels  along a specific slope vertical
+  act_line <- lapply(seq(length(unique(sd$SPLoc))), function(x){
+    sum(sd$dH[sd$SDLoc == act_vertical][seq(x)])  
+  })
+  return(c(0, unlist(act_line)))
+})
+slope_verticals <- t(do.call("rbind", slope_verticals))
+
+grid <- slope_parallels + slope_verticals[,1]
+grid
+```
+
+
+This is already the final matrix. If we want to e.g. interpolate it, we can define a raster as the interpolation target, convert the just created matrix to a spatial points data frame in the same projection as the raster(which is technically necessary but this does not actually georeference the data set) and interpolate the values into the raster.
+```{r, echo=TRUE, warning=FALSE}
+library(raster)
+library(gstat)
+
+grid <- melt(as.data.frame(grid))
+grid$X <- as.numeric(substr(grid$variable, 2, 2))
+grid$Y <- seq(6, 1, -1)
+grid$variable <- NULL
+rownames(grid) <- NULL
+coordinates(grid) <- ~X+Y
+projection(grid) <- CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+rtm <- raster(ncols=10, nrows=10)
+extent(rtm) <- extent(grid)
+
+interpolation_model <- gstat(id = "value", formula = value~1, data = grid)
+rtm_interpolated <- interpolate(rtm, interpolation_model)
+plot(rtm_interpolated)
+```
+
+If we prefer 3D, we can do something like that.
+```{r, echo=TRUE, warning=FALSE}
+library(rasterVis)
+plot3D(rtm_interpolated)
+```
