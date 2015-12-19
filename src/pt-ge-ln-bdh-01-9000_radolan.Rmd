@@ -2,9 +2,7 @@
 output: html_document
 ---
 
-The following examples illustrates the reading of DWD RADOLAN files and the 
-extraction of measurement time series at specific points defined by a point 
-vector dataset. For simplicity, we start with reading flat binary RST files.
+The following examples illustrates the reading of DWD RADOLAN files and shows some GIS-related examples (maps, extracted time-series at selected points). For simplicity, we start with reading flat binary RST files.
 An example on how to read the original binary data is shown at the end.
 
 ### Workflow
@@ -12,7 +10,7 @@ An example on how to read the original binary data is shown at the end.
 The workflow is straight forward:
 1. Read radolan file (and convert it to ``raster`` if it is not already in a GIS format)
 2. Georeference the RADOLAN data set
-3. Extract points (or compute any other GIS operation)
+3. Do any geostatistical analysis you want
 
 ### Some usefull libraries
 ```{r, message=FALSE, warning = FALSE}
@@ -47,12 +45,47 @@ projection(radolan) <- radolan_proj
 ```
 
 
-### Extracting RADOLAN data at selected locations
+### Geostatistical analysis examples
+With the above example, we have read the complete RADOLAN RW information for 2010 and converted it to a georeferenced GIS format, i.e. we have hourly values of rainfall amount in a 900 by 900 pixel grid over Germany in a single ``raster::stack``. Let's just play a little bit.
+
+As one example, one could make a map of the monthly sum for September 2010 for a region of 100 by 100 pixels around Marburg. Therefore, the layer names are used to get the layer numbers for September. Afterwards, the respective subset of the stack is croped to the region and then the sum over all layers of this croped dataset is calculated.
+```{r, eval=FALSE}
+layers <- names(radolan)
+monthly_agg_id <- as.numeric(substr(layers, 6, 7))
+
+monthly_agg_id_09 <- which(monthly_agg_id == 9)
+radolan_09 <- radolan[[monthly_agg_id_09]]
+
+radolan_09_mr <- crop(radolan_09, extent(radolan_09, 425, 524, 380, 479))
+radolan_09s_mr <- stackApply(radolan_09_mr, indices = 1, fun = sum)
+
+radolan_09s_mr[radolan_09s_mr<0] <- -1
+radolan_09s_mr <- radolan_09s_mr * 0.1
+```
+
+Once this is done, we can plot it.
+
+```{r, message=FALSE, eval=TRUE, echo=FALSE}
+# save(radolan_09s_mr, radolan_09_mr, file = (paste0(path, "radolan_09s_mr.Rdata")))
+# save(radolan_09s_mr, file = (paste0(path, "radolan_09s_mr.Rdata")))
+# Save data so you can time efficiently load it if you need it again.
+# save(rdl_lb, rdl_lb_long, file = paste0(path, "rdl_lb.Rdata"))
+path <- ("F:/radolan/")
+load(paste0(path, "test/rdl_lb.Rdata"))
+load(paste0(path, "test/radolan_09s_mr.Rdata"))
+```
+
+```{r, message=FALSE, eval=TRUE, echo=TRUE}
+plot(radolan_09s_mr, zlim = c(0,150))
+```
+
+
+#### Extracting RADOLAN data at selected locations
 Extracting RADOLAN data using e.g. a point vector shape file is not different from doing this with any other ``raster`` dataset. Just use the ``raster::extract`` function. 
 
 The following example reads a shape dataset with four points, transforms the created spatial points data frame to the same projection as the RADOLAN dataset and extracts the RADOLAN information at these points for every data layer in the RADOLAN stack. The date/time information is extracted from the raster layer names, which are stored as row names in the finally created data frame.
 ```{r, message=FALSE, eval=FALSE}
-lahnberge <- readOGR("vector/lahnberge.shp", "lahnberge")
+lahnberge <- readOGR(paste0(path, "vector/lahnberge.shp"), "lahnberge")
 lahnberge <- spTransform(lahnberge, radolan_proj)
 
 rdl_lb <- extract(radolan, lahnberge)
@@ -70,23 +103,12 @@ colnames(rdl_lb_long) <- c("DATETIME", "LOCATION", "P")
 rdl_lb_long$P <- rdl_lb_long$P * 0.1
 ```
 
-```{r, message=FALSE, eval=TRUE, echo=FALSE}
-# Save data so you can time efficiently load it if you need it again.
-# save(rdl_lb, rdl_lb_long, file = paste0(path, "rdl_lb.Rdata"))
-path <- ("F:/radolan/")
-load(paste0(path, "test/rdl_lb.Rdata"))
-```
-
-
-### Do some analysis
-With the above example, we have read the complete RADOLAN RW information for 2010 for the four locations, i.e. we have hourly values of rainfall amount at each of the four locations for every hour in 2010.
-
-Let's plot it.
+That's it. Now we can plot it as e.g. an aggregated view of the variability.
 ```{r, message=FALSE}
 ggplot(rdl_lb_long, aes(x = LOCATION, y = P, fill = LOCATION)) + geom_boxplot()
 ```
 
-Subset the dataset to raining hours only (i.e. at least one of the four points
+Maybe we should subset the dataset to raining hours only (i.e. at least one of the four points
 must have a rainfall rate > 0).
 ```{r, message=FALSE}
 p_datetime <- unique(rdl_lb_long$DATETIME[rdl_lb_long$P > 0])
@@ -161,3 +183,4 @@ extent(meike) <- extent(-523.4622, 376.5378, -4658.645, -3758.645)
 projection(meike) <- radolan_proj
 mapview(rb, at = seq(-100,60,1)) + meike
 ```
+
